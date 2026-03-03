@@ -1,4 +1,4 @@
-name: Terraform Transit Gateway Module
+name: Terraform GCP IP Reservation Module
 #logo: logo/logo.jpg
 
 license: "APACHE2"
@@ -8,23 +8,270 @@ copyrights:
     url: "https://cloudops.works"
     year: "2024"
 
-github_repo: cloudopsworks/terraform-module-aws-vpc-setup
+github_repo: cloudopsworks/terraform-module-gcp-ip-reservation
 
 description: |-
-  VPC Module for setting up transit gateway with ResourceAccessMananger support.
+  GCP Module for reserving and managing static IP addresses (INTERNAL and EXTERNAL) with support for bulk allocation, IPv4/IPv6, and organizational tagging standards.
 
 # Introduction to the project
-#introduction: |-
-#  This is an introduction.
+introduction: |-
+  This Terraform module simplifies the process of reserving and managing Google Cloud Platform (GCP) static IP addresses. It provides a reusable and configurable way to allocate IP addresses for various GCP resources such as compute instances, load balancers, and network interfaces. The module supports both INTERNAL (private) and EXTERNAL (public) IP addresses, IPv4 and IPv6 protocols, and bulk reservation capabilities. Built on Cloud Ops Works best practices, it ensures consistent labeling, organizational structure, and integration with existing GCP infrastructure.
 
 # How to use this project
-#usage: |-
+usage: |-
+  **IMPORTANT:** Do not pin to the `master` branch in your Terragrunt configuration. Instead, pin to a specific release tag (e.g., `?ref=v1.0.0`) to ensure stability and avoid breaking changes.
+
+  To use this module in a Terragrunt configuration, create a `terragrunt.hcl` file with the following structure:
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    reservation_number = 1   # (Optional) Number of reserved IP addresses. Default: 1.
+    ip_settings = {          # (Optional) Map of settings for the IP address.
+      address_type = "EXTERNAL"   # (Optional) Type: "EXTERNAL" or "INTERNAL". Default: "EXTERNAL".
+      ip_version   = "IPV4"       # (Optional) Version: "IPV4" or "IPV6". Default: "IPV4".
+      address      = null         # (Optional) Specific IP address. Default: null (auto-allocated).
+      subnetwork   = null         # (Optional) Subnetwork for INTERNAL IPs. Default: null.
+      description  = null         # (Optional) Description text. Default: null.
+      region       = null         # (Optional) GCP region. Default: null (provider region).
+    }
+    is_hub = false   # (Optional) Hub/spoke configuration. Default: false.
+    spoke_def = "001"   # (Optional) 3-digit spoke ID. Default: "001".
+    org = {   # (Required) Organization details.
+      organization_name = "example-org"   # (Required) Organization name.
+      organization_unit = "operations"    # (Required) Organizational unit.
+      environment_type  = "production"    # (Required) Environment type.
+      environment_name  = "main"          # (Required) Environment name.
+    }
+    extra_tags = {   # (Optional) Additional labels. Default: {}.
+      Owner = "CloudOps"
+      Project = "MyProject"
+    }
+  }
+  ```
+
+  **Variables Documentation (YAML Format):**
+
+  ```yaml
+  reservation_number: 1   # (Optional) Number of reserved IP addresses. Default: 1. Possible values: positive integers (1, 2, 3, ...).
+  ip_settings:   # (Optional) Map of settings for the IP address. Default: {}.
+    address_type: "EXTERNAL"   # (Optional) Type of address. Default: "EXTERNAL". Possible values: "EXTERNAL", "INTERNAL".
+    ip_version: "IPV4"         # (Optional) IP version. Default: "IPV4". Possible values: "IPV4", "IPV6".
+    address: null              # (Optional) Specific static IP address. Default: null (auto-allocated). Format: valid IPv4/IPv6 string.
+    subnetwork: null           # (Optional) Subnetwork for INTERNAL addresses. Default: null. Format: "projects/{ID}/regions/{REGION}/subnetworks/{NAME}".
+    description: null          # (Optional) Description text. Default: null. Max 256 characters.
+    region: null               # (Optional) GCP region. Default: null (provider region). Examples: "us-central1", "europe-west1".
+  is_hub: false   # (Optional) Hub/spoke configuration flag. Default: false. Possible values: true, false.
+  spoke_def: "001"   # (Optional) Spoke identifier. Default: "001". Must be 3-digit string (e.g., "001", "002", "100").
+  org:   # (Required) Organization metadata.
+    organization_name: "example-org"   # (Required) Organization name. Any string.
+    organization_unit: "operations"    # (Required) Unit/department name. Any string.
+    environment_type: "production"     # (Required) Environment classification. Examples: "production", "staging", "development", "testing".
+    environment_name: "main"           # (Required) Environment identifier. Any string.
+  extra_tags: {}   # (Optional) Additional labels to apply. Default: {}. Map of string keys to string values.
+  ```
 
 # Example usage
-#examples: |-
+examples: |-
+  ### Example 1: Basic Single External IP Reservation
+
+  Reserve one external IPv4 address with default settings:
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    org = {
+      organization_name = "acme-corp"
+      organization_unit = "engineering"
+      environment_type  = "staging"
+      environment_name  = "dev"
+    }
+  }
+  ```
+
+  ### Example 2: Bulk IP Reservation
+
+  Reserve 5 external IPv4 addresses for production:
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    reservation_number = 5
+    org = {
+      organization_name = "acme-corp"
+      organization_unit = "platform"
+      environment_type  = "production"
+      environment_name  = "web"
+    }
+    extra_tags = {
+      Application = "WebServer"
+      Team = "Platform"
+    }
+  }
+  ```
+
+  ### Example 3: Internal IP Reservation in Subnetwork
+
+  Reserve 2 internal IPv4 addresses within a specific subnetwork:
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    reservation_number = 2
+    ip_settings = {
+      address_type = "INTERNAL"
+      ip_version   = "IPV4"
+      subnetwork   = "projects/acme-corp/regions/us-central1/subnetworks/app-subnet"
+      region       = "us-central1"
+      description  = "Internal IPs for application tier"
+    }
+    org = {
+      organization_name = "acme-corp"
+      organization_unit = "applications"
+      environment_type  = "production"
+      environment_name  = "app-tier"
+    }
+  }
+  ```
+
+  ### Example 4: IPv6 External IP Reservation
+
+  Reserve external IPv6 addresses:
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    ip_settings = {
+      address_type = "EXTERNAL"
+      ip_version   = "IPV6"
+    }
+    org = {
+      organization_name = "acme-corp"
+      organization_unit = "network"
+      environment_type  = "production"
+      environment_name  = "ipv6-services"
+    }
+  }
+  ```
+
+  ### Example 5: Specific IP Address Reservation
+
+  Reserve a specific static IP address (if available in the pool):
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    ip_settings = {
+      address_type = "EXTERNAL"
+      ip_version   = "IPV4"
+      address      = "35.192.45.100"
+      description  = "Reserved IP for load balancer"
+    }
+    org = {
+      organization_name = "acme-corp"
+      organization_unit = "infrastructure"
+      environment_type  = "production"
+      environment_name  = "lb"
+    }
+  }
+  ```
+
+  ### Example 6: Hub-Spoke Configuration with Multiple IPs
+
+  Hub configuration with 3 IPs for a spoke network:
+
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+  }
+
+  inputs = {
+    reservation_number = 3
+    is_hub = true
+    spoke_def = "001"
+    ip_settings = {
+      address_type = "INTERNAL"
+      ip_version   = "IPV4"
+      subnetwork   = "projects/acme-corp/regions/europe-west1/subnetworks/spoke-001"
+      region       = "europe-west1"
+    }
+    org = {
+      organization_name = "acme-corp"
+      organization_unit = "network-ops"
+      environment_type  = "production"
+      environment_name  = "europe"
+    }
+    extra_tags = {
+      NetworkType = "Spoke"
+      Region = "EU"
+    }
+  }
+  ```
 
 # How to get started quickly
-#quickstart: |-
+quickstart: |-
+  Follow these steps to quickly reserve IP addresses using this module:
+
+  1. **Initialize Terragrunt**: Ensure you have Terragrunt installed and configured for GCP.
+
+  2. **Create Configuration File**: Create a `terragrunt.hcl` file in your project directory:
+
+     ```hcl
+     terraform {
+       source = "github.com/cloudopsworks/terraform-module-gcp-ip-reservation.git?ref=v1.0.0"
+     }
+
+     inputs = {
+       org = {
+         organization_name = "your-org"
+         organization_unit = "your-unit"
+         environment_type  = "production"
+         environment_name  = "your-env"
+       }
+       reservation_number = 1
+     }
+     ```
+
+  3. **Authenticate with GCP**: Ensure you have proper GCP credentials:
+     ```bash
+     gcloud auth login
+     gcloud config set project YOUR_PROJECT_ID
+     ```
+
+  4. **Review the Plan**: Run Terragrunt plan to preview the IP reservation:
+     ```bash
+     terragrunt plan
+     ```
+
+  5. **Apply the Configuration**: Execute the reservation:
+     ```bash
+     terragrunt apply
+     ```
+
+  6. **Verify IPs**: Check the reserved IPs in GCP Console or via CLI:
+     ```bash
+     gcloud compute addresses list
+     ```
+
+  The module will automatically generate IP names based on your organization structure (e.g., `eng-dev-prod-001-usc1-ip-1`) and apply consistent labels across all reserved addresses.
 
 include:
   - "docs/targets.md"
