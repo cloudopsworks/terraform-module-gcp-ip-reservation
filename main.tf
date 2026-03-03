@@ -1,8 +1,17 @@
-##
-# (c) 2021-2025
-#     Cloud Ops Works LLC - https://cloudops.works/
-#     Find us on:
-#       GitHub: https://github.com/cloudopsworks
-#       WebSite: https://cloudops.works
-#     Distributed Under Apache v2.0 License
-#
+# GCP Static IP Address Reservation
+resource "google_compute_address" "addresses" {
+  count = var.addresses_count
+
+  name         = local.address_names[count.index]
+  address_type = var.address_type
+  ip_version   = var.ip_version
+  address      = var.address
+  subnetwork   = var.subnet
+  description  = var.description != null ? "${var.description} (${local.address_names[count.index]})" : null
+
+  labels = var.labels
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
